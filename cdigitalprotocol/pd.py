@@ -99,10 +99,29 @@ class Decoder(srd.Decoder):
     def print_reglerdatenwort(self):
         regler_id = self.dataWord >> 6
         regler_id &= 7
+        regler_str = str(regler_id)
+        ta = str(self.dataWord & 1)
         if regler_id == 7:
             regler_id -= 1
+            regler_str = "SC"
+            pc = str((self.dataWord >> 1) & 1)
+            nh = str((self.dataWord >> 2) & 1)
+            fr = str((self.dataWord >> 3) & 1)
+            tk = str((self.dataWord >> 4) & 1)
+            kfr = str((self.dataWord >> 5) & 1)
+            desc_long = "KFR:{} TK:{} FR:{} NH:{} PC:{} TA:{}".format(kfr, tk, fr, nh, pc, ta)
+        else:
+            # einzelne Werte
+            gas = str((self.dataWord >> 1) & 15)
+            wt = str((self.dataWord >> 5) & 1)
+
+            desc_long = "ID:{} G: {} WT:{} TA:{}".format(regler_str, gas, wt, ta)
+        desc_short = "R " + regler_str
+        desc = "Regler " + regler_str
+
+
         #self.put(self.beginDataWord, self.endDatatWord, self.out_ann, [regler_id, [str(format(self.dataWord, '10b'))]])
-        self.put(self.beginDataWord, self.endDatatWord, self.out_ann, [regler_id, [str(regler_id)]])
+        self.put(self.beginDataWord, self.endDatatWord, self.out_ann, [regler_id, [desc_short, desc, desc_long]])
 
     def print_aktivdatenwort(self):
         #self.put(self.beginDataWord, self.endDatatWord, self.out_ann, [2, [str(format(self.dataWord, '8b'))]])
