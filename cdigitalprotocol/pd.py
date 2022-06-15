@@ -14,7 +14,9 @@ class Decoder(srd.Decoder):
         {'id': 'data', 'name': 'Data', 'desc': 'Data line'},
     )
     optional_channels = ()
-    options = ()
+    options = (
+        { 'id': 'invert', 'desc': 'Signal ist invertiert',
+          'default': 'nein', 'values': ('ja', 'nein') },)
     #    {'id': 'address_format', 'desc': 'Displayed slave address format', 'default': 'shifted', 'values': ('shifted', 'unshifted')},
     #)
     annotations = (
@@ -135,6 +137,10 @@ class Decoder(srd.Decoder):
         self.put(self.bitStart, self.samplenum, self.out_ann, [10, [str(value)]])
 
     def decode(self):
+        invert = self.options['invert'] == 'ja'
+        bit = 0
+        if invert:
+            bit = 1
         while True:
             pin = self.wait({0: 'e'}) # wir warten auf die naechste level-aenderung
             self.currentMicros = self.get_usec_from_samples(self.samplenum)
@@ -144,7 +150,7 @@ class Decoder(srd.Decoder):
             if 75.0 <= self.intervalMicros <= 125.0:
                 self.previousMicros = self.currentMicros
                 self.dataWord <<= 1
-                if pin[0] == 0:
+                if pin[0] == bit:
                     self.dataWord |= 1
                     self.print_bit(1)
                 else:
