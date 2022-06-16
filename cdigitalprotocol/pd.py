@@ -147,7 +147,20 @@ class Decoder(srd.Decoder):
         self.put(self.beginDataWord, self.endDatatWord, self.out_ann, [8, [desc_short, desc_long]])
 
     def print_quittierungswort(self):
-        self.put(self.beginDataWord, self.endDatatWord, self.out_ann, [11, [str(format(self.dataWord, '9b'))]])
+        s7 = str(self.get_value_from_dataword())
+        s6 = str(self.get_value_from_dataword(1))
+        s5 = str(self.get_value_from_dataword(2))
+        s4 = str(self.get_value_from_dataword(3))
+        s3 = str(self.get_value_from_dataword(4))
+        s2 = str(self.get_value_from_dataword(5))
+        s1 = str(self.get_value_from_dataword(6))
+        s0 = str(self.get_value_from_dataword(7))
+
+        desc_short = "Q"
+        desc = "Quitt."
+        desc_long = "S0:{} S1:{} S2:{} S3:{} S4:{} S5:{} S6:{} S7:{}".format(s0, s1, s2, s3, s4, s5, s6, s7)
+
+        self.put(self.beginDataWord, self.endDatatWord, self.out_ann, [11, [desc_short, desc, desc_long]])
 
     def print_programmierdatenwort(self):
         #self.put(self.beginDataWord, self.endDatatWord, self.out_ann, [1, [str(format(self.dataWord, '13b'))]])
