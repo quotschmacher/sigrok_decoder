@@ -1,4 +1,5 @@
 import sigrokdecode as srd
+import math
 
 class Decoder(srd.Decoder):
     api_version = 3
@@ -16,27 +17,26 @@ class Decoder(srd.Decoder):
     optional_channels = ()
     options = (
         { 'id': 'invert', 'desc': 'Signal ist invertiert',
-          'default': 'nein', 'values': ('ja', 'nein') },)
-    #    {'id': 'address_format', 'desc': 'Displayed slave address format', 'default': 'shifted', 'values': ('shifted', 'unshifted')},
-    #)
+          'default': 'nein', 'values': ('ja', 'nein') },
+    )
     annotations = (
-        ('controller_0', 'Reglerwort ID 1'), # 0
-        ('controller_1', 'Reglerwort ID 2'), # 1
-        ('controller_2', 'Reglerwort ID 3'), # 2
-        ('controller_3', 'Reglerwort ID 4'), # 3
-        ('controller_4', 'Reglerwort ID 5'), # 4
-        ('controller_5', 'Reglerwort ID 6'), # 5
+        ('controller_0', 'Reglerwort ID 0'), # 0
+        ('controller_1', 'Reglerwort ID 1'), # 1
+        ('controller_2', 'Reglerwort ID 2'), # 2
+        ('controller_3', 'Reglerwort ID 3'), # 3
+        ('controller_4', 'Reglerwort ID 4'), # 4
+        ('controller_5', 'Reglerwort ID 5'), # 5
         ('controller_sc', 'Reglerwort SC/Ghost'), # 6
         ('controller_prog', 'Programmierwort'), # 7
         ('controller_active', 'Aktivdatenwort'), # 8
         ('controller_different_new', 'Was ganz anderes'), # 9
         ('bit', 'Bit'), # 10
+        ('quittierung', 'Quittierungswort'), # 11}
     )
     annotation_rows = (
-        ('word_controller', 'Reglerwort', (0,1,2,3,4,5,6,)),
-        #('word_type', 'Typ', (0,1,2,)),
-        #('word_type_second', 'Wert', (3,)),
         ('word_bit_value', 'Bits', (10,)),
+        ('word_controller', 'Reglerwort', (0,1,2,3,4,5,6,)),
+        ('active_quit', 'Aktiv-/Quittierungswort', (8, 11,)),
     )
     marker = 0
 
@@ -51,6 +51,7 @@ class Decoder(srd.Decoder):
         self.dataWord = 1
         self.beginDataWord = 0
         self.endDatatWord = 0
+        self.next_could_be_active_data_word = False
 
     def __init__(self):
         self.reset()
@@ -82,6 +83,12 @@ class Decoder(srd.Decoder):
         retval *= msec * 1000
         return int(retval)
 
+    def get_value_from_dataword(self, bitsToShift = 0, bitWidth = 1) -> int:
+        compare_val = int(math.pow(2, bitWidth))
+        compare_val -= 1
+        retval = (self.dataWord >> bitsToShift) & compare_val
+        return int(retval)
+
     def start(self):
         #pass
         self.init_variables()
@@ -99,35 +106,48 @@ class Decoder(srd.Decoder):
                 self.dataWord |= 1
 
     def print_reglerdatenwort(self):
-        regler_id = self.dataWord >> 6
-        regler_id &= 7
+        regler_id = self.get_value_from_dataword(6, 3)
         regler_str = str(regler_id)
-        ta = str(self.dataWord & 1)
+        ta = str(self.get_value_from_dataword())
+
+        if regler_id == 2 or regler_id == 7:
+            self.next_could_be_active_data_word = True
+
         if regler_id == 7:
             regler_id -= 1
             regler_str = "SC"
-            pc = str((self.dataWord >> 1) & 1)
-            nh = str((self.dataWord >> 2) & 1)
-            fr = str((self.dataWord >> 3) & 1)
-            tk = str((self.dataWord >> 4) & 1)
-            kfr = str((self.dataWord >> 5) & 1)
+            pc = str(self.get_value_from_dataword(1))
+            nh = str(self.get_value_from_dataword(2))
+            fr = str(self.get_value_from_dataword(3))
+            tk = str(self.get_value_from_dataword(4))
+            kfr = str(self.get_value_from_dataword(5))
             desc_long = "KFR:{} TK:{} FR:{} NH:{} PC:{} TA:{}".format(kfr, tk, fr, nh, pc, ta)
         else:
             # einzelne Werte
             gas = str((self.dataWord >> 1) & 15)
-            wt = str((self.dataWord >> 5) & 1)
-
+            wt = str(self.get_value_from_dataword(5))
             desc_long = "ID:{} G: {} WT:{} TA:{}".format(regler_str, gas, wt, ta)
         desc_short = "R " + regler_str
         desc = "Regler " + regler_str
 
-
-        #self.put(self.beginDataWord, self.endDatatWord, self.out_ann, [regler_id, [str(format(self.dataWord, '10b'))]])
         self.put(self.beginDataWord, self.endDatatWord, self.out_ann, [regler_id, [desc_short, desc, desc_long]])
 
     def print_aktivdatenwort(self):
-        #self.put(self.beginDataWord, self.endDatatWord, self.out_ann, [2, [str(format(self.dataWord, '8b'))]])
-        pass
+        ie = str(self.get_value_from_dataword())
+        r5 = str(self.get_value_from_dataword(1))
+        r4 = str(self.get_value_from_dataword(2))
+        r3 = str(self.get_value_from_dataword(3))
+        r2 = str(self.get_value_from_dataword(4))
+        r1 = str(self.get_value_from_dataword(5))
+        r0 = str(self.get_value_from_dataword(6))
+
+        desc_short = "IE:" + ie
+        desc_long = "R0:{} R1:{} R2:{} R3:{} R4:{} R5:{} IE:{}".format(r0, r1, r2, r3, r4, r5, ie)
+
+        self.put(self.beginDataWord, self.endDatatWord, self.out_ann, [8, [desc_short, desc_long]])
+
+    def print_quittierungswort(self):
+        self.put(self.beginDataWord, self.endDatatWord, self.out_ann, [11, [str(format(self.dataWord, '9b'))]])
 
     def print_programmierdatenwort(self):
         #self.put(self.beginDataWord, self.endDatatWord, self.out_ann, [1, [str(format(self.dataWord, '13b'))]])
@@ -157,8 +177,12 @@ class Decoder(srd.Decoder):
                     self.print_bit(0)
                 self.bitStart = self.samplenum
             elif self.intervalMicros > 6000.0:
-                if 127 < self.dataWord < 256:
-                    self.print_aktivdatenwort()
+                if self.next_could_be_active_data_word:
+                    if 127 < self.dataWord < 256:
+                        self.print_aktivdatenwort()
+                    elif self.dataWord < 512:
+                        self.print_quittierungswort()
+                    self.next_could_be_active_data_word = False
                 elif self.dataWord < 1024:
                     self.print_reglerdatenwort()
                 else:
