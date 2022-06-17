@@ -29,14 +29,31 @@ class Decoder(srd.Decoder):
         ('controller_sc', 'Reglerwort SC/Ghost'), # 6
         ('controller_prog', 'Programmierwort'), # 7
         ('controller_active', 'Aktivdatenwort'), # 8
-        ('controller_different_new', 'Was ganz anderes'), # 9
-        ('bit', 'Bit'), # 10
-        ('quittierung', 'Quittierungswort'), # 11}
+        ('bit', 'Bit'), # 9
+        ('quittierung', 'Quittierungswort'), # 10
+        ('prog_gas', ''),# 11 # Geschwindigkeit programmieren
+        ('prog_general', 'Programmierdatenwort'), # 12
+        ('prog_bremse', ''), # 13 # Bremswert programmieren
+        ('prog_tank', ''), # 14 # Tank programmieren
+        ('prog_werte', ''), # 15 # Werte fuer Fahrzeug
+        ('prog_tanken', ''), # 16 # Tanken möglich Modus
+        ('prog_position', ''), # 17 # Position des Fahrers
+        ('prog_finish', ''), # 18 # Rennen beendet
+        ('prog_finishline', ''), # 19 # Zieldurchfahrt
+        ('prog_fuel', ''), # 20 # Tankstand
+        ('prog_jumpstart', ''), # 21 # Frühstart
+        ('prog_traffic_light', ''), # 22 # Ampel
+        ('prog_lapcount', ''), # 23 # Rundenzahl lower Nibble
+        ('prog_reset', ''), # 24 # Reset
+        ('prog_pitlaneadapter', ''), # 25 # Pitlandeadapter konfigurieren
+        ('prog_pe rformance', ''), # 26 # Performance Messmodus
     )
     annotation_rows = (
-        ('word_bit_value', 'Bits', (10,)),
+        ('word_bit_value', 'Bits', (9,)),
         ('word_controller', 'Reglerwort', (0,1,2,3,4,5,6,)),
-        ('active_quit', 'Aktiv-/Quittierungswort', (8, 11,)),
+        ('active_quit', 'Aktiv-/Quittierungswort', (8, 10,)),
+        ('prog_word', 'Programmierdatenwort', (11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26,)),
+        #('prog_word', 'Programmierdatenwort', (11,)),
     )
     marker = 0
 
@@ -52,6 +69,7 @@ class Decoder(srd.Decoder):
         self.beginDataWord = 0
         self.endDatatWord = 0
         self.next_could_be_active_data_word = False
+        self.pitlane_vorhanden = False
 
     def __init__(self):
         self.reset()
@@ -83,11 +101,29 @@ class Decoder(srd.Decoder):
         retval *= msec * 1000
         return int(retval)
 
+    def get_flipped_value_from_dataword(self, bitsToShift = 0, bitWidth = 1) -> int:
+        value = self.get_value_from_dataword(bitsToShift, bitWidth)
+        flipped = self.flip_bits(value, bitWidth)
+        return int(flipped)
+
     def get_value_from_dataword(self, bitsToShift = 0, bitWidth = 1) -> int:
         compare_val = int(math.pow(2, bitWidth))
         compare_val -= 1
         retval = (self.dataWord >> bitsToShift) & compare_val
         return int(retval)
+
+    def flip_bits(self, value, bitCount) -> int:
+        # https://www.techiedelight.com/reverse-bits-of-given-integer/
+        bitCount -= 1
+        result = int(0)
+        while bitCount >= 0 and value:
+            if value & 1:
+                result |= (1 << bitCount)
+
+            value >>= 1
+            bitCount -= 1
+
+        return int(result)
 
     def start(self):
         #pass
@@ -160,14 +196,52 @@ class Decoder(srd.Decoder):
         desc = "Quitt."
         desc_long = "S0:{} S1:{} S2:{} S3:{} S4:{} S5:{} S6:{} S7:{}".format(s0, s1, s2, s3, s4, s5, s6, s7)
 
-        self.put(self.beginDataWord, self.endDatatWord, self.out_ann, [11, [desc_short, desc, desc_long]])
+        self.put(self.beginDataWord, self.endDatatWord, self.out_ann, [10, [desc_short, desc, desc_long]])
 
     def print_programmierdatenwort(self):
-        #self.put(self.beginDataWord, self.endDatatWord, self.out_ann, [1, [str(format(self.dataWord, '13b'))]])
-        pass
+        wert = self.get_flipped_value_from_dataword(8, 4)
+        befehl = self.get_flipped_value_from_dataword(3, 5)
+        regler = self.get_flipped_value_from_dataword(0, 3)
+        #self.put(self.beginDataWord, self.endDatatWord, self.out_ann, [11, ["Befehl: {}, Regler: {}, Wert: {}".format(befehl, regler, wert)]])
+        if befehl == 0: # Geschwindigkeit programmieren
+            self.put(self.beginDataWord, self.endDatatWord, self.out_ann, [11, ["Befehl: {}, Regler: {}, Wert: {}".format(befehl, regler, wert)]])
+        elif befehl == 1: # Bremswert programmieren
+            self.put(self.beginDataWord, self.endDatatWord, self.out_ann, [12, ["Befehl: {}, Regler: {}, Wert: {}".format(befehl, regler, wert)]])
+        elif befehl == 2: # Tank programmieren
+            self.put(self.beginDataWord, self.endDatatWord, self.out_ann, [13, ["Befehl: {}, Regler: {}, Wert: {}".format(befehl, regler, wert)]])
+        elif befehl == 4: # Werte fuer Fahrzeug
+            self.put(self.beginDataWord, self.endDatatWord, self.out_ann, [14, ["Befehl: {}, Regler: {}, Wert: {}".format(befehl, regler, wert)]])
+        elif befehl == 5: # Tanken möglich Modus
+            self.put(self.beginDataWord, self.endDatatWord, self.out_ann, [15, ["Befehl: {}, Regler: {}, Wert: {}".format(befehl, regler, wert)]])
+        elif befehl == 6: # Position des Fahrers
+            self.put(self.beginDataWord, self.endDatatWord, self.out_ann, [16, ["Befehl: {}, Regler: {}, Wert: {}".format(befehl, regler, wert)]])
+        elif befehl == 7: # Rennen beendet
+            self.put(self.beginDataWord, self.endDatatWord, self.out_ann, [17, ["Befehl: {}, Regler: {}, Wert: {}".format(befehl, regler, wert)]])
+        elif befehl == 8: # Zieldurchfahrt mit Bestzeit
+            self.put(self.beginDataWord, self.endDatatWord, self.out_ann, [18, ["Befehl: {}, Regler: {}, Wert: {}".format(befehl, regler, wert)]])
+        elif befehl == 9: # Zieldurchfahrt
+            self.put(self.beginDataWord, self.endDatatWord, self.out_ann, [19, ["Befehl: {}, Regler: {}, Wert: {}".format(befehl, regler, wert)]])
+        elif befehl == 10: # Tankstand
+            self.put(self.beginDataWord, self.endDatatWord, self.out_ann, [20, ["Befehl: {}, Regler: {}, Wert: {}".format(befehl, regler, wert)]])
+        elif befehl == 11: # Frühstart
+            self.put(self.beginDataWord, self.endDatatWord, self.out_ann, [21, ["Befehl: {}, Regler: {}, Wert: {}".format(befehl, regler, wert)]])
+        elif befehl == 16: # Ampel
+            self.put(self.beginDataWord, self.endDatatWord, self.out_ann, [22, ["Befehl: {}, Regler: {}, Wert: {}".format(befehl, regler, wert)]])
+        elif befehl == 17: # Rundenzahl upper Nibble
+            self.put(self.beginDataWord, self.endDatatWord, self.out_ann, [23, ["Befehl: {}, Regler: {}, Wert: {}".format(befehl, regler, wert)]])
+        elif befehl == 18: # Rundenzahl lower Nibble
+            self.put(self.beginDataWord, self.endDatatWord, self.out_ann, [23, ["Befehl: {}, Regler: {}, Wert: {}".format(befehl, regler, wert)]])
+        elif befehl == 19: # Reset
+            self.put(self.beginDataWord, self.endDatatWord, self.out_ann, [24, ["Befehl: {}, Regler: {}, Wert: {}".format(befehl, regler, wert)]])
+        elif befehl == 20: # Pitlandeadapter konfigurieren
+            self.put(self.beginDataWord, self.endDatatWord, self.out_ann, [25, ["Befehl: {}, Regler: {}, Wert: {}".format(befehl, regler, wert)]])
+        elif befehl == 21: # Performance Messmodus
+            self.put(self.beginDataWord, self.endDatatWord, self.out_ann, [26, ["Befehl: {}, Regler: {}, Wert: {}".format(befehl, regler, wert)]])
+
+        
 
     def print_bit(self, value):
-        self.put(self.bitStart, self.samplenum, self.out_ann, [10, [str(value)]])
+        self.put(self.bitStart, self.samplenum, self.out_ann, [9, [str(value)]])
 
     def decode(self):
         invert = self.options['invert'] == 'ja'
